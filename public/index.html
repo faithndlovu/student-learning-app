@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LearnHub — Student Learning Platform</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <section id="auth-view" class="auth hidden">
+    <div class="auth-side">
+      <div class="brand big"><span class="logo">L</span> LearnHub</div>
+      <h1>Learn at your own pace.</h1>
+      <p>Enrol in courses, work through lessons, test yourself with quizzes and watch your progress grow.</p>
+    </div>
+    <div class="auth-form">
+      <div class="auth-card">
+        <div class="tabs">
+          <button class="tab active" data-auth-tab="login">Sign in</button>
+          <button class="tab" data-auth-tab="register">Student registration</button>
+        </div>
+        <form id="login-form" class="stack">
+          <label>Email <input name="email" type="email" required autocomplete="email" /></label>
+          <label>Password <input name="password" type="password" required autocomplete="current-password" /></label>
+          <button class="btn primary block">Sign in</button>
+        </form>
+        <form id="register-form" class="stack hidden">
+          <label>Full name <input name="name" required /></label>
+          <label>Email <input name="email" type="email" required autocomplete="email" /></label>
+          <div class="grid2">
+            <label>Phone <input name="phone" type="tel" /></label>
+            <label>Programme <input name="programme" placeholder="e.g. BSc Computer Science" /></label>
+          </div>
+          <label>Password <input name="password" type="password" minlength="8" required autocomplete="new-password" /></label>
+          <button class="btn primary block">Register</button>
+        </form>
+        <p class="hint">Demo (after <code>npm run seed</code>): student@example.com, instructor@example.com, admin@example.com. Password: <code>Password123!</code></p>
+      </div>
+    </div>
+  </section>
+
+  <div id="app-view" class="hidden">
+    <header class="topbar">
+      <div class="brand"><span class="logo">L</span> LearnHub</div>
+      <nav id="nav"></nav>
+      <div class="me"><a href="#/profile" id="me-name"></a><span id="me-role" class="pill"></span><button id="logout" class="btn small ghost">Sign out</button></div>
+    </header>
+    <main id="main"></main>
+  </div>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card"><button class="close" id="modal-close" aria-label="Close">×</button><div id="modal-body"></div></div>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
