@@ -1,7 +1,18 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret-change-me';
+const DEV_SECRET = 'dev-only-secret-change-me';
 const TOKEN_TTL = process.env.TOKEN_TTL || '8h';
+
+function jwtSecret() {
+  const secret = process.env.JWT_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET must be set when NODE_ENV=production');
+  }
+  return DEV_SECRET;
+}
+const JWT_SECRET = jwtSecret();
+const usingDevSecret = JWT_SECRET === DEV_SECRET;
 
 function signToken(user) {
   return jwt.sign({ sub: user.id, role: user.role }, JWT_SECRET, { expiresIn: TOKEN_TTL });
@@ -14,15 +25,16 @@ function authenticate(db) {
     const header = req.headers.authorization || '';
     const [scheme, token] = header.split(' ');
     if (scheme !== 'Bearer' || !token) return res.status(401).json({ error: 'Authentication required' });
+    let payload;
     try {
-      const payload = jwt.verify(token, JWT_SECRET);
-      const user = findUser.get(payload.sub);
-      if (!user) return res.status(401).json({ error: 'User no longer exists' });
-      req.user = user;
-      next();
+      payload = jwt.verify(token, JWT_SECRET);
     } catch {
-      res.status(401).json({ error: 'Invalid or expired token' });
+      return res.status(401).json({ error: 'Invalid or expired token' });
     }
+    const user = Number.isInteger(payload.sub) ? findUser.get(payload.sub) : undefined;
+    if (!user) return res.status(401).json({ error: 'User no longer exists' });
+    req.user = user;
+    next();
   };
 }
 
@@ -35,4 +47,7 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { signToken, authenticate, requireRole };
+/** Admins can edit any course; instructors only their own. */
+const canEditCourse = (user, course) => user.role === 'admin' || (user.role === 'instructor' && course.instructor_id === user.id);
+
+module.exports = { signToken, authenticate, requireRole, canEditCourse, usingDevSecret };

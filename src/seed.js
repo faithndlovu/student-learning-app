@@ -2,23 +2,32 @@
  * Resets the database and loads demo data.
  * All demo accounts use the password: Password123!
  */
+require('./check-node');
 require('dotenv').config({ quiet: true });
 const fs = require('fs');
-const path = require('path');
 const bcrypt = require('bcryptjs');
-const { createDb } = require('./db');
+const { createDb, defaultDbPath } = require('./db');
+const { ensureStudentNumber } = require('./accounts');
 
-const file = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'learning.db');
+const file = defaultDbPath();
+if (file === ':memory:') {
+  console.error('DB_PATH is :memory:, so there is nothing to seed. Point DB_PATH at a file.');
+  process.exit(1);
+}
 for (const f of [file, `${file}-wal`, `${file}-shm`]) if (fs.existsSync(f)) fs.unlinkSync(f);
 const db = createDb(file);
-const year = new Date().getFullYear();
 
 const hash = bcrypt.hashSync('Password123!', 10);
-const addUser = db.prepare('INSERT INTO users (name, email, password_hash, role, student_number, programme) VALUES (?, ?, ?, ?, ?, ?)');
-addUser.run('Ada Admin', 'admin@example.com', hash, 'admin', null, '');
-const inst = addUser.run('Dr. Ivy Instructor', 'instructor@example.com', hash, 'instructor', null, '').lastInsertRowid;
-const thabo = addUser.run('Thabo Student', 'student@example.com', hash, 'student', `STU${year}0003`, 'BSc Computer Science').lastInsertRowid;
-const lerato = addUser.run('Lerato Learner', 'lerato@example.com', hash, 'student', `STU${year}0004`, 'BCom Information Systems').lastInsertRowid;
+const addUser = db.prepare('INSERT INTO users (name, email, password_hash, role, programme) VALUES (?, ?, ?, ?, ?)');
+const user = (name, email, role, programme = '') => {
+  const id = addUser.run(name, email, hash, role, programme).lastInsertRowid;
+  if (role === 'student') ensureStudentNumber(db, id);
+  return id;
+};
+user('Ada Admin', 'admin@example.com', 'admin');
+const inst = user('Dr. Ivy Instructor', 'instructor@example.com', 'instructor');
+const thabo = user('Thabo Student', 'student@example.com', 'student', 'BSc Computer Science');
+const lerato = user('Lerato Learner', 'lerato@example.com', 'student', 'BCom Information Systems');
 
 const addCourse = db.prepare(`INSERT INTO courses (code, title, description, category, level, capacity, published, instructor_id)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);

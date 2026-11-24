@@ -149,8 +149,33 @@ describe('Student Learning API', () => {
     assert.equal(gradeQuiz(qs, [0, 0, 0]).passed, false); // 1/3 = 33%
   });
 
-  test('serves the web UI', async () => {
+  test('malformed input returns 400/404 instead of crashing', async () => {
+    await request(app).post('/api/auth/register').send({ name: 'n', email: 'num@test.dev', password: 12345678 }).expect(400);
+    await request(app).post('/api/auth/register').send({ name: 'n', email: ['a@test.dev'], password: 'Password123!' }).expect(400);
+    await request(app).post('/api/auth/login').send({ email: { $ne: 1 }, password: 'x' }).expect(401);
+    await request(app).put('/api/auth/me').set(as('student')).send({ current_password: 'Password123!', new_password: 123456789 }).expect(400);
+    await request(app).get('/api/users?role=student&role=admin').set(as('admin')).expect(200);
+    await request(app).get('/api/courses?q=a&q=b').set(as('student')).expect(200);
+    await request(app).get('/api/courses/abc').set(as('student')).expect(404);
+    await request(app).get('/api/lessons/abc').set(as('student')).expect(404);
+    await request(app).post(`/api/courses/${ids.course}/lessons`).set(as('instructor')).send({ title: 'L', quiz: [null] }).expect(400);
+    await request(app).post(`/api/courses/${ids.course}/lessons`).set(as('instructor'))
+      .send({ title: 'L', quiz: [{ question: 'q', options: [{}, {}], correct_index: 0 }] }).expect(400);
+    await request(app).post('/api/auth/login').set('Content-Type', 'application/json').send('{bad').expect(400);
+    await request(app).get('/api/courses').set('Authorization', 'Bearer not-a-token').expect(401);
+  });
+
+  test('a user who owns courses cannot be made a student', async () => {
+    const r = await request(app).patch(`/api/users/${ids.instructor}/role`).set(as('admin')).send({ role: 'student' }).expect(400);
+    assert.match(r.body.error, /courses/);
+    await request(app).patch(`/api/users/${ids.instructor}/role`).set(as('admin')).send({ role: 'admin' }).expect(200);
+    await request(app).patch(`/api/users/${ids.instructor}/role`).set(as('admin')).send({ role: 'instructor' }).expect(200);
+  });
+
+  test('serves the web UI with security headers', async () => {
     const res = await request(app).get('/courses').expect(200);
     assert.match(res.text, /<title>LearnHub/);
+    assert.equal(res.headers['x-content-type-options'], 'nosniff');
+    assert.equal(res.headers['x-powered-by'], undefined);
   });
 });

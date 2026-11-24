@@ -110,3 +110,6 @@ th { font-size: .78rem; text-transform: uppercase; color: var(--muted); letter-s
   main { padding: 16px; }
   .grid2 { grid-template-columns: 1fr; }
 }
+
+.table-wrap { overflow-x: auto; }
+.table-wrap table { min-width: 560px; }

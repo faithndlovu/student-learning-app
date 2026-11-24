@@ -36,14 +36,18 @@ Node.js 22.13+, Express 5, SQLite (Node’s built-in `node:sqlite`, so there are
 
 ## Getting started
 
-You need **Node.js 22.13 or newer** (check with `node -v`).
+You need **Node.js 22.13 or newer** (check with `node -v`; an `.nvmrc` is included). The server exits with a clear message on older versions.
 
 ```bash
 npm install
-cp .env.example .env      # optional
-npm run seed              # optional demo data
+cp .env.example .env      # then set JWT_SECRET to a long random string
+npm run seed              # optional demo data (resets the database)
 npm start                 # http://localhost:3000
 ```
+
+This is a Node.js app with its own web server. It does not run through Apache/XAMPP, so open it at `http://localhost:3000`, not via `htdocs`.
+
+`JWT_SECRET` is required when `NODE_ENV=production`. In development, an insecure fallback is used and a warning is printed.
 
 **Demo accounts** (after `npm run seed`), all with the password `Password123!`:
 
@@ -54,8 +58,22 @@ npm start                 # http://localhost:3000
 Without seeding, the **first registered account becomes the admin**. Everyone who registers after that is a student. Promote instructors from the Users page.
 
 ```bash
-npm test     # 13 API integration tests
+npm test     # API integration tests (in-memory database)
 ```
+
+## Deploying to Railway
+
+The repo includes a `Dockerfile` and `railway.json` (health check on `/api/health`).
+
+1. In [Railway](https://railway.com), choose **New Project → Deploy from GitHub repo** and pick this repository.
+2. Open the service, go to **Variables**, and add:
+   - `JWT_SECRET`: a long random string. Generate one with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
+   - `NODE_ENV=production` and `DB_PATH=/data/learning.db` are already set by the Dockerfile. `PORT` is set by Railway.
+3. Add a **Volume** to the service (right-click the service → **Attach volume**) with mount path `/data`. Without it, the database is wiped on every deploy.
+4. Under **Settings → Networking**, click **Generate Domain** to get a public URL.
+5. Open the URL and **register straight away**. The first account becomes the admin. Promote instructors from the Users page.
+
+Keep the service at one replica, because SQLite is a single file on one volume. Every push to the connected branch redeploys automatically. Don't run `npm run seed` in production, because it deletes the database.
 
 ## REST API
 
@@ -93,13 +111,17 @@ Quiz format when creating or updating a lesson:
 
 ```
 src/
-  app.js         Express app + dashboard endpoint
-  server.js      Entry point
-  db.js          SQLite schema
-  auth.js        JWT + role middleware
+  app.js         Express app, security headers, error handling
+  server.js      Entry point (startup checks, graceful shutdown)
+  check-node.js  Node.js version check
+  db.js          SQLite schema and indexes
+  sqlite.js      Wrapper around node:sqlite
+  auth.js        JWT + role middleware, course permissions
+  accounts.js    Student numbers and user helpers
+  validation.js  Input coercion and validation helpers
   progress.js    Progress calculations and quiz grading
   seed.js        Demo data
-  routes/        auth, users, courses, lessons
+  routes/        auth, users, courses, lessons, dashboard
 public/          Single-page web client
 tests/           API integration tests
 ```

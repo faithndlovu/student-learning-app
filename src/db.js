@@ -74,16 +74,25 @@ CREATE TABLE IF NOT EXISTS quiz_attempts (
 
 CREATE INDEX IF NOT EXISTS idx_lessons_course ON lessons(course_id, position);
 CREATE INDEX IF NOT EXISTS idx_enroll_student ON enrollments(student_id);
+CREATE INDEX IF NOT EXISTS idx_enroll_course ON enrollments(course_id, status);
+CREATE INDEX IF NOT EXISTS idx_quiz_lesson ON quiz_questions(lesson_id);
+CREATE INDEX IF NOT EXISTS idx_attempts_student_lesson ON quiz_attempts(student_id, lesson_id);
+CREATE INDEX IF NOT EXISTS idx_progress_lesson ON lesson_progress(lesson_id);
+CREATE INDEX IF NOT EXISTS idx_courses_instructor ON courses(instructor_id);
 `;
 
+/** DB_PATH from the environment, or data/learning.db in the project folder. */
+const defaultDbPath = () => process.env.DB_PATH || path.join(__dirname, '..', 'data', 'learning.db');
+
 function createDb(file) {
-  const target = file || process.env.DB_PATH || path.join(__dirname, '..', 'data', 'learning.db');
+  const target = file || defaultDbPath();
   if (target !== ':memory:') fs.mkdirSync(path.dirname(target), { recursive: true });
   const db = openDatabase(target);
-  db.pragma('journal_mode = WAL');
+  if (target !== ':memory:') db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
+  db.pragma('busy_timeout = 5000');
   db.exec(SCHEMA);
   return db;
 }
 
-module.exports = { createDb };
+module.exports = { createDb, defaultDbPath };

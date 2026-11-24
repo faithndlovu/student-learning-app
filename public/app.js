@@ -28,6 +28,15 @@
     clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.add('hidden'), 3500);
   }
   const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { toast(e.message, true); } };
+  /** Re-renders without stealing focus (and the caret) from the field the user is typing in. */
+  const keepFocus = (fn) => async () => {
+    const el = document.activeElement;
+    const id = el?.id;
+    const pos = typeof el?.selectionStart === 'number' ? el.selectionStart : null;
+    await fn();
+    const again = id && document.getElementById(id);
+    if (again) { again.focus(); if (pos !== null && again.setSelectionRange) again.setSelectionRange(pos, pos); }
+  };
   const formData = (f) => Object.fromEntries(new FormData(f).entries());
   const openModal = (html) => { $('#modal-body').innerHTML = html; $('#modal').classList.remove('hidden'); };
   const closeModal = () => { $('#modal').classList.add('hidden'); $('#modal-body').innerHTML = ''; };
@@ -61,6 +70,7 @@
   function signIn({ token, user }) { state.token = token; state.user = user; localStorage.setItem('lh_token', token); showApp(); }
   function logout() {
     state.token = null; state.user = null; localStorage.removeItem('lh_token');
+    main.innerHTML = ''; closeModal(); $$('#auth-view form').forEach((f) => f.reset());
     $('#app-view').classList.add('hidden'); $('#auth-view').classList.remove('hidden');
   }
   function showApp() {
@@ -136,12 +146,12 @@
           <div class="card stat"><div class="value">${s.instructors || 0}</div><div class="label">Instructors</div></div>` : ''}
       </div>
       <div class="card"><h2>Courses</h2>
-        ${d.courses.length ? `<table><thead><tr><th>Course</th><th>Status</th><th>Lessons</th><th>Students</th><th>Completions</th><th style="width:200px">Avg. progress</th></tr></thead><tbody>
+        ${d.courses.length ? `<div class="table-wrap"><table><thead><tr><th>Course</th><th>Status</th><th>Lessons</th><th>Students</th><th>Completions</th><th style="width:200px">Avg. progress</th></tr></thead><tbody>
           ${d.courses.map((c) => `<tr><td><a href="#/courses/${c.id}"><strong>${esc(c.code)}</strong> ${esc(c.title)}</a></td>
             <td><span class="pill ${c.published ? 'completed' : 'draft'}">${c.published ? 'published' : 'draft'}</span></td>
             <td>${c.lesson_count}</td><td>${c.students}</td><td>${c.completions}</td>
             <td><div class="row"><div class="grow">${progressBar(c.average_progress)}</div><span class="small">${c.average_progress}%</span></div></td></tr>`).join('')}
-        </tbody></table>` : '<div class="empty">No courses yet — create your first one.</div>'}
+        </tbody></table></div>` : '<div class="empty">No courses yet — create your first one.</div>'}
       </div>`;
     $('#new-course').onclick = () => courseForm();
   }
@@ -162,7 +172,7 @@
         <select id="f-level" style="max-width:180px"><option value="">All levels</option>${['beginner', 'intermediate', 'advanced'].map((l) => `<option ${filters.level === l ? 'selected' : ''}>${l}</option>`).join('')}</select>
       </div>
       ${courses.length ? `<div class="courses">${courses.map(courseCard).join('')}</div>` : `<div class="card empty">${mine && r === 'student' ? 'You haven’t enrolled in any courses yet. <a href="#/courses">Browse the catalogue</a>.' : 'No courses match.'}</div>`}`;
-    const reload = () => renderCatalogue({ ...filters, q: $('#f-q').value, category: $('#f-cat').value, level: $('#f-level').value });
+    const reload = keepFocus(() => renderCatalogue({ ...filters, q: $('#f-q').value, category: $('#f-cat').value, level: $('#f-level').value }));
     let t; $('#f-q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(guard(reload), 300); });
     $('#f-cat').onchange = guard(reload); $('#f-level').onchange = guard(reload);
     $$('[data-course]').forEach((el) => (el.onclick = () => (location.hash = `#/courses/${el.dataset.course}`)));
@@ -261,11 +271,11 @@
 
     const roster = await api(`/courses/${id}/roster`);
     $('#roster').innerHTML = `<div class="row spread"><h2>Students (${roster.students.length})</h2><span class="small muted">Avg. progress ${roster.average_progress}% · ${roster.completed} completed</span></div>
-      ${roster.students.length ? `<table><thead><tr><th>Student</th><th>No.</th><th>Status</th><th style="width:170px">Progress</th><th>Quiz avg</th></tr></thead><tbody>
+      ${roster.students.length ? `<div class="table-wrap"><table><thead><tr><th>Student</th><th>No.</th><th>Status</th><th style="width:170px">Progress</th><th>Quiz avg</th></tr></thead><tbody>
       ${roster.students.map((s) => `<tr><td>${esc(s.name)}<div class="small muted">${esc(s.email)}</div></td><td class="small">${esc(s.student_number)}</td>
         <td><span class="pill ${s.status}">${s.status}</span></td>
         <td><div class="row"><div class="grow">${progressBar(s.progress.percent)}</div><span class="small">${s.progress.percent}%</span></div></td>
-        <td>${s.progress.average_quiz_score === null ? '—' : `${s.progress.average_quiz_score}%`}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">No students enrolled yet.</p>'}`;
+        <td>${s.progress.average_quiz_score === null ? '—' : `${s.progress.average_quiz_score}%`}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No students enrolled yet.</p>'}`;
   }
 
   // ---------- Lesson editor ----------
@@ -321,6 +331,7 @@
     const d = await api(`/lessons/${id}`);
     const student = state.user.role === 'student';
     const hasQuiz = d.questions.length > 0;
+    const passedQuiz = d.attempts.some((a) => a.passed);
     const best = d.attempts.reduce((m, a) => Math.max(m, Math.round((a.score / a.total) * 100)), 0);
     main.innerHTML = `
       <a href="#/courses/${d.course.id}" class="small">← ${esc(d.course.code)} · ${esc(d.course.title)}</a>
@@ -340,7 +351,7 @@
         <div class="stack">
           ${student ? `<div class="card stack"><h2>Your progress</h2>
             ${d.completed ? '<p class="result pass" style="margin:0">You’ve completed this lesson.</p><button class="btn block ghost" id="undo">Mark as not complete</button>'
-              : hasQuiz ? `<p class="small muted">Pass the quiz to complete this lesson.</p>` : '<button class="btn primary block" id="complete">Mark lesson complete</button>'}
+              : hasQuiz && !passedQuiz ? '<p class="small muted">Pass the quiz to complete this lesson.</p>' : '<button class="btn primary block" id="complete">Mark lesson complete</button>'}
           </div>` : ''}
           <div class="card stack"><h2>Navigate</h2>
             ${d.previous ? `<a class="btn block" href="#/lessons/${d.previous.id}">← ${esc(d.previous.title)}</a>` : ''}
@@ -381,13 +392,13 @@
     main.innerHTML = `<div class="page-head"><div><h1>Users</h1><div class="muted">Manage students, instructors and administrators.</div></div></div>
       <div class="row" style="margin-bottom:16px"><input id="u-q" placeholder="Search name, email or student no." value="${esc(filters.q)}" style="max-width:320px" />
         <select id="u-role" style="max-width:180px"><option value="">All roles</option>${['student', 'instructor', 'admin'].map((r) => `<option ${filters.role === r ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
-      <div class="card"><table><thead><tr><th>Name</th><th>Student no.</th><th>Programme</th><th>Role</th><th>Activity</th><th>Joined</th><th></th></tr></thead><tbody>
+      <div class="card"><div class="table-wrap"><table><thead><tr><th>Name</th><th>Student no.</th><th>Programme</th><th>Role</th><th>Activity</th><th>Joined</th><th></th></tr></thead><tbody>
       ${users.map((u) => `<tr><td><strong>${esc(u.name)}</strong><div class="small muted">${esc(u.email)}</div></td><td class="small">${esc(u.student_number || '—')}</td><td class="small">${esc(u.programme || '—')}</td>
         <td><select data-role="${u.id}" style="max-width:140px">${['student', 'instructor', 'admin'].map((r) => `<option ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
         <td class="small">${u.role === 'student' ? `${u.enrolments} enrolments` : `${u.courses_taught} courses`}</td><td class="small">${fmtDate(u.created_at)}</td>
         <td>${u.id === state.user.id ? '<span class="small muted">You</span>' : `<button class="btn small danger" data-del="${u.id}">Delete</button>`}</td></tr>`).join('')}
-      </tbody></table></div>`;
-    const reload = () => renderUsers({ q: $('#u-q').value, role: $('#u-role').value });
+      </tbody></table></div></div>`;
+    const reload = keepFocus(() => renderUsers({ q: $('#u-q').value, role: $('#u-role').value }));
     let t; $('#u-q').addEventListener('input', () => { clearTimeout(t); t = setTimeout(guard(reload), 300); });
     $('#u-role').onchange = guard(reload);
     $$('[data-role]').forEach((s) => (s.onchange = guard(async () => {
